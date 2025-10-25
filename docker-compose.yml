@@ -15,7 +15,7 @@ services:
       retries: 3
       timeout: 5s
     networks:
-      - claper-net
+      - coolify-shared
 
   app:
     image: ghcr.io/claperco/claper:latest
@@ -26,30 +26,35 @@ services:
     volumes:
       - claper-uploads:/app/uploads
 
+    # Expose 4000 on the host. Caddy will forward traffic here.
+    # (Yes, this re-adds the port mapping. Coolify's caddy expects it.)
+    ports:
+      - "4000:4000"
+
     environment:
-      # --- core app config ---
+      # ---- public URLs / domain ----
       - SERVICE_FQDN_APP=claper.automate.business.aau.dk
       - SERVICE_URL_APP=https://claper.automate.business.aau.dk
       - BASE_URL=https://claper.automate.business.aau.dk
       - CLAPER_DOMAIN=claper.automate.business.aau.dk
 
-      # --- db config ---
+      # ---- db config ----
       - POSTGRES_USER=${POSTGRES_USER:-claper}
       - POSTGRES_DB=${POSTGRES_DB:-claper}
       - DATABASE_URL=${DATABASE_URL:?}
-      # example for Coolify env:
-      # DATABASE_URL=postgres://claper:${POSTGRES_PASSWORD}@db:5432/claper
+      # you'll set DATABASE_URL in Coolify env, e.g.:
+      # postgres://claper:${POSTGRES_PASSWORD}@db:5432/claper
 
-      # --- mail config ---
+      # ---- mail config ----
       - MAIL_FROM=${MAIL_FROM:-noreply@claper.co}
       - MAIL_FROM_NAME=${MAIL_FROM_NAME:-Claper}
       - MAIL_TRANSPORT=${MAIL_TRANSPORT:-local}
 
-      # --- file storage ---
+      # ---- uploads / presentations ----
       - PRESENTATION_STORAGE=${PRESENTATION_STORAGE:-local}
       - PRESENTATION_STORAGE_DIR=${PRESENTATION_STORAGE_DIR:-/app/uploads}
 
-      # --- secret key (required) ---
+      # ---- secret key ----
       - SECRET_KEY_BASE=${SECRET_KEY_BASE:?}
 
     healthcheck:
@@ -58,21 +63,25 @@ services:
       start_period: 20s
       timeout: 5s
 
-    # no ports exposed; Coolify's Traefik will publish it
+    # Labels for Coolify's Caddy ingress
     labels:
-      - traefik.enable=true
-
-      # Router: traffic for this domain goes to this service
-      - traefik.http.routers.claper.rule=Host(`claper.automate.business.aau.dk`) && PathPrefix(`/`)
-      - traefik.http.routers.claper.entryPoints=https
-      - traefik.http.routers.claper.tls=true
-      - traefik.http.routers.claper.tls.certresolver=letsencrypt
-
-      # Service: Traefik must talk to internal port 4000
-      - traefik.http.services.claper.loadbalancer.server.port=4000
+      # Caddy vhosts
+      - caddy_0=https://claper.automate.business.aau.dk
+      # Match all paths
+      - caddy_0.handle_path=/*
+      # Reverse proxy traffic to this container ("{{upstreams}}" is Coolify magic)
+      - caddy_0.handle_path.0_reverse_proxy={{upstreams}}
+      # Static file fallbacks
+      - caddy_0.try_files={path} /index.html /index.php
+      # Compression
+      - caddy_0.encode=zstd gzip
+      # Hide server header
+      - caddy_0.header=-Server
+      # Tell Coolify/Caddy which network to use
+      - caddy_ingress_network=gkkckgoc4osg0ss44wgogk4c
 
     networks:
-      - claper-net
+      - coolify-shared
 
 volumes:
   claper-db:
@@ -81,5 +90,6 @@ volumes:
     driver: local
 
 networks:
-  claper-net:
-    driver: bridge
+  coolify-shared:
+    external: true
+    name: gkkckgoc4osg0ss44wgogk4c
