@@ -14,8 +14,6 @@ services:
       test: ["CMD", "pg_isready", "-q", "-d", "${POSTGRES_DB:-claper}", "-U", "${POSTGRES_USER:-claper}"]
       retries: 3
       timeout: 5s
-    networks:
-      - coolify-shared
 
   app:
     image: ghcr.io/claperco/claper:latest
@@ -25,37 +23,18 @@ services:
         condition: service_healthy
     volumes:
       - claper-uploads:/app/uploads
-
-    # Expose 4000 on the host. Caddy will forward traffic here.
-    # (Yes, this re-adds the port mapping. Coolify's caddy expects it.)
-    ports:
-      - "4000:4000"
-
     environment:
-      # ---- public URLs / domain ----
-      - SERVICE_FQDN_APP=claper.automate.business.aau.dk
-      - SERVICE_URL_APP=https://claper.automate.business.aau.dk
-      - BASE_URL=https://claper.automate.business.aau.dk
-      - CLAPER_DOMAIN=claper.automate.business.aau.dk
-
-      # ---- db config ----
-      - POSTGRES_USER=${POSTGRES_USER:-claper}
-      - POSTGRES_DB=${POSTGRES_DB:-claper}
+      # core required by Claper
       - DATABASE_URL=${DATABASE_URL:?}
-      # you'll set DATABASE_URL in Coolify env, e.g.:
-      # postgres://claper:${POSTGRES_PASSWORD}@db:5432/claper
+      - SECRET_KEY_BASE=${SECRET_KEY_BASE:?}
+      - BASE_URL=${BASE_URL:?}
 
-      # ---- mail config ----
+      # optional extras we already discussed
       - MAIL_FROM=${MAIL_FROM:-noreply@claper.co}
       - MAIL_FROM_NAME=${MAIL_FROM_NAME:-Claper}
       - MAIL_TRANSPORT=${MAIL_TRANSPORT:-local}
-
-      # ---- uploads / presentations ----
       - PRESENTATION_STORAGE=${PRESENTATION_STORAGE:-local}
       - PRESENTATION_STORAGE_DIR=${PRESENTATION_STORAGE_DIR:-/app/uploads}
-
-      # ---- secret key ----
-      - SECRET_KEY_BASE=${SECRET_KEY_BASE:?}
 
     healthcheck:
       test: "curl --fail http://localhost:4000 || exit 1"
@@ -63,33 +42,8 @@ services:
       start_period: 20s
       timeout: 5s
 
-    # Labels for Coolify's Caddy ingress
-    labels:
-      # Caddy vhosts
-      - caddy_0=https://claper.automate.business.aau.dk
-      # Match all paths
-      - caddy_0.handle_path=/*
-      # Reverse proxy traffic to this container ("{{upstreams}}" is Coolify magic)
-      - caddy_0.handle_path.0_reverse_proxy={{upstreams}}
-      # Static file fallbacks
-      - caddy_0.try_files={path} /index.html /index.php
-      # Compression
-      - caddy_0.encode=zstd gzip
-      # Hide server header
-      - caddy_0.header=-Server
-      # Tell Coolify/Caddy which network to use
-      - caddy_ingress_network=gkkckgoc4osg0ss44wgogk4c
-
-    networks:
-      - coolify-shared
-
 volumes:
   claper-db:
     driver: local
   claper-uploads:
     driver: local
-
-networks:
-  coolify-shared:
-    external: true
-    name: gkkckgoc4osg0ss44wgogk4c
