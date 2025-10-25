@@ -1,40 +1,57 @@
+version: "3.9"
+
 services:
   db:
     image: postgres:15
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-claper}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?}
+      - POSTGRES_DB=${POSTGRES_DB:-claper}
     volumes:
-      - "claper-db:/var/lib/postgresql/data"
+      - claper-db:/var/lib/postgresql/data
     healthcheck:
-      test:
-        - CMD
-        - pg_isready
-        - "-q"
-        - "-d"
-        - "claper"
-        - "-U"
-        - "claper"
+      test: ["CMD", "pg_isready", "-q", "-d", "${POSTGRES_DB:-claper}", "-U", "${POSTGRES_USER:-claper}"]
       retries: 3
       timeout: 5s
-    environment:
-      POSTGRES_PASSWORD: claper
-      POSTGRES_USER: claper
-      POSTGRES_DB: claper
     networks:
       - claper-net
+
   app:
-    image: ghcr.io/claperco/claper:latest # or build: .
-    ports:
-      - 4000:4000
-    volumes:
-      - "claper-uploads:/app/uploads"
-    healthcheck:
-      test: curl --fail http://localhost:4000 || exit 1
-      retries: 3
-      start_period: 20s
-      timeout: 5s
-    env_file: .env
+    image: ghcr.io/claperco/claper:latest
+    restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
+    volumes:
+      - claper-uploads:/app/uploads
+
+    environment:
+      # runtime config for Claper
+      - DATABASE_URL=${DATABASE_URL:?}
+      - SECRET_KEY_BASE=${SECRET_KEY_BASE:?}
+      - BASE_URL=https://${CLAPER_DOMAIN:?}
+      - CLAPER_DOMAIN=${CLAPER_DOMAIN:?}
+
+    healthcheck:
+      test: "curl --fail http://localhost:4000 || exit 1"
+      retries: 3
+      start_period: 20s
+      timeout: 5s
+
+    # No ports exposed; Coolify Traefik will publish it
+    labels:
+      - traefik.enable=true
+
+      # Router: incoming requests for your domain go here
+      - traefik.http.routers.claper.rule=Host(`${CLAPER_DOMAIN:?}`) && PathPrefix(`/`)
+      - traefik.http.routers.claper.entryPoints=https
+      - traefik.http.routers.claper.tls=true
+      - traefik.http.routers.claper.tls.certresolver=letsencrypt
+
+      # Service: tell Traefik the container listens on 4000 internally
+      - traefik.http.services.claper.loadbalancer.server.port=4000
+
     networks:
       - claper-net
 
