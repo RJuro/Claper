@@ -14,6 +14,8 @@ services:
       test: ["CMD", "pg_isready", "-q", "-d", "${POSTGRES_DB:-claper}", "-U", "${POSTGRES_USER:-claper}"]
       retries: 3
       timeout: 5s
+    networks:
+      - gkkckgoc4osg0ss44wgogk4c
 
   app:
     image: ghcr.io/claperco/claper:latest
@@ -23,13 +25,15 @@ services:
         condition: service_healthy
     volumes:
       - claper-uploads:/app/uploads
+
+    # ↓↓↓ THIS IS THE CRITICAL BIT ↓↓↓
+    ports:
+      - "4000:4000"
+
     environment:
-      # core required by Claper
       - DATABASE_URL=${DATABASE_URL:?}
       - SECRET_KEY_BASE=${SECRET_KEY_BASE:?}
       - BASE_URL=${BASE_URL:?}
-
-      # optional extras we already discussed
       - MAIL_FROM=${MAIL_FROM:-noreply@claper.co}
       - MAIL_FROM_NAME=${MAIL_FROM_NAME:-Claper}
       - MAIL_TRANSPORT=${MAIL_TRANSPORT:-local}
@@ -42,8 +46,36 @@ services:
       start_period: 20s
       timeout: 5s
 
+    labels:
+      - caddy_0=https://claper.automate.business.aau.dk
+      - caddy_0.handle_path=/*
+      - caddy_0.handle_path.0_reverse_proxy={{upstreams}}
+      - caddy_0.try_files={path} /index.html /index.php
+      - caddy_0.encode=zstd gzip
+      - caddy_0.header=-Server
+      - caddy_ingress_network=gkkckgoc4osg0ss44wgogk4c
+      - traefik.enable=true
+      - traefik.http.middlewares.gzip.compress=true
+      - traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https
+      - traefik.http.routers.http-0-gkkckgoc4osg0ss44wgogk4c-app.entryPoints=http
+      - traefik.http.routers.http-0-gkkckgoc4osg0ss44wgogk4c-app.middlewares=redirect-to-https
+      - traefik.http.routers.http-0-gkkckgoc4osg0ss44wgogk4c-app.rule=Host(`claper.automate.business.aau.dk`) && PathPrefix(`/`)
+      - traefik.http.routers.https-0-gkkckgoc4osg0ss44wgogk4c-app.entryPoints=https
+      - traefik.http.routers.https-0-gkkckgoc4osg0ss44wgogk4c-app.middlewares=gzip
+      - traefik.http.routers.https-0-gkkckgoc4osg0ss44wgogk4c-app.rule=Host(`claper.automate.business.aau.dk`) && PathPrefix(`/`)
+      - traefik.http.routers.https-0-gkkckgoc4osg0ss44wgogk4c-app.tls=true
+      - traefik.http.routers.https-0-gkkckgoc4osg0ss44wgogk4c-app.tls.certresolver=letsencrypt
+
+    networks:
+      - gkkckgoc4osg0ss44wgogk4c
+
 volumes:
   claper-db:
     driver: local
   claper-uploads:
     driver: local
+
+networks:
+  gkkckgoc4osg0ss44wgogk4c:
+    external: true
+    name: gkkckgoc4osg0ss44wgogk4c
