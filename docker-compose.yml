@@ -27,32 +27,29 @@ services:
       - claper-uploads:/app/uploads
 
     environment:
-      # ---- core runtime config ----
-      - CLAPER_DOMAIN=${CLAPER_DOMAIN:?}
+      # --- core app config ---
+      - SERVICE_FQDN_APP=claper.automate.business.aau.dk
+      - SERVICE_URL_APP=https://claper.automate.business.aau.dk
+      - BASE_URL=https://claper.automate.business.aau.dk
+      - CLAPER_DOMAIN=claper.automate.business.aau.dk
 
-      - SERVICE_FQDN_APP=${CLAPER_DOMAIN:?}
-      - SERVICE_URL_APP=https://${CLAPER_DOMAIN:?}
-
-      # if Claper internally builds absolute URLs, BASE_URL should be the public URL.
-      # The sample you gave includes :4000, but behind Coolify/Traefik you do NOT expose 4000 publicly.
-      # So we point BASE_URL to normal https on your domain (no :4000).
-      - BASE_URL=https://${CLAPER_DOMAIN:?}
-
-      # database
+      # --- db config ---
       - POSTGRES_USER=${POSTGRES_USER:-claper}
       - POSTGRES_DB=${POSTGRES_DB:-claper}
       - DATABASE_URL=${DATABASE_URL:?}
+      # example for Coolify env:
+      # DATABASE_URL=postgres://claper:${POSTGRES_PASSWORD}@db:5432/claper
 
-      # mail
+      # --- mail config ---
       - MAIL_FROM=${MAIL_FROM:-noreply@claper.co}
       - MAIL_FROM_NAME=${MAIL_FROM_NAME:-Claper}
       - MAIL_TRANSPORT=${MAIL_TRANSPORT:-local}
 
-      # uploads / presentations
+      # --- file storage ---
       - PRESENTATION_STORAGE=${PRESENTATION_STORAGE:-local}
       - PRESENTATION_STORAGE_DIR=${PRESENTATION_STORAGE_DIR:-/app/uploads}
 
-      # secret for signing/encryption
+      # --- secret key (required) ---
       - SECRET_KEY_BASE=${SECRET_KEY_BASE:?}
 
     healthcheck:
@@ -61,17 +58,17 @@ services:
       start_period: 20s
       timeout: 5s
 
-    # do NOT expose ports; Coolify's Traefik will handle HTTPS
+    # no ports exposed; Coolify's Traefik will publish it
     labels:
       - traefik.enable=true
 
-      # Router: send traffic for this domain to this service
-      - traefik.http.routers.claper.rule=Host(`${CLAPER_DOMAIN:?}`) && PathPrefix(`/`)
+      # Router: traffic for this domain goes to this service
+      - traefik.http.routers.claper.rule=Host(`claper.automate.business.aau.dk`) && PathPrefix(`/`)
       - traefik.http.routers.claper.entryPoints=https
       - traefik.http.routers.claper.tls=true
       - traefik.http.routers.claper.tls.certresolver=letsencrypt
 
-      # Service: tell Traefik to talk to container port 4000 internally
+      # Service: Traefik must talk to internal port 4000
       - traefik.http.services.claper.loadbalancer.server.port=4000
 
     networks:
