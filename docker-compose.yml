@@ -27,11 +27,33 @@ services:
       - claper-uploads:/app/uploads
 
     environment:
-      # runtime config for Claper
-      - DATABASE_URL=${DATABASE_URL:?}
-      - SECRET_KEY_BASE=${SECRET_KEY_BASE:?}
-      - BASE_URL=https://${CLAPER_DOMAIN:?}
+      # ---- core runtime config ----
       - CLAPER_DOMAIN=${CLAPER_DOMAIN:?}
+
+      - SERVICE_FQDN_APP=${CLAPER_DOMAIN:?}
+      - SERVICE_URL_APP=https://${CLAPER_DOMAIN:?}
+
+      # if Claper internally builds absolute URLs, BASE_URL should be the public URL.
+      # The sample you gave includes :4000, but behind Coolify/Traefik you do NOT expose 4000 publicly.
+      # So we point BASE_URL to normal https on your domain (no :4000).
+      - BASE_URL=https://${CLAPER_DOMAIN:?}
+
+      # database
+      - POSTGRES_USER=${POSTGRES_USER:-claper}
+      - POSTGRES_DB=${POSTGRES_DB:-claper}
+      - DATABASE_URL=${DATABASE_URL:?}
+
+      # mail
+      - MAIL_FROM=${MAIL_FROM:-noreply@claper.co}
+      - MAIL_FROM_NAME=${MAIL_FROM_NAME:-Claper}
+      - MAIL_TRANSPORT=${MAIL_TRANSPORT:-local}
+
+      # uploads / presentations
+      - PRESENTATION_STORAGE=${PRESENTATION_STORAGE:-local}
+      - PRESENTATION_STORAGE_DIR=${PRESENTATION_STORAGE_DIR:-/app/uploads}
+
+      # secret for signing/encryption
+      - SECRET_KEY_BASE=${SECRET_KEY_BASE:?}
 
     healthcheck:
       test: "curl --fail http://localhost:4000 || exit 1"
@@ -39,17 +61,17 @@ services:
       start_period: 20s
       timeout: 5s
 
-    # No ports exposed; Coolify Traefik will publish it
+    # do NOT expose ports; Coolify's Traefik will handle HTTPS
     labels:
       - traefik.enable=true
 
-      # Router: incoming requests for your domain go here
+      # Router: send traffic for this domain to this service
       - traefik.http.routers.claper.rule=Host(`${CLAPER_DOMAIN:?}`) && PathPrefix(`/`)
       - traefik.http.routers.claper.entryPoints=https
       - traefik.http.routers.claper.tls=true
       - traefik.http.routers.claper.tls.certresolver=letsencrypt
 
-      # Service: tell Traefik the container listens on 4000 internally
+      # Service: tell Traefik to talk to container port 4000 internally
       - traefik.http.services.claper.loadbalancer.server.port=4000
 
     networks:
